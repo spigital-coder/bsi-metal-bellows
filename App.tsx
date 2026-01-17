@@ -5,7 +5,7 @@ import Visualizer from './components/Visualizer';
 import LoginModal from './components/LoginModal';
 import AdminDashboard from './components/AdminDashboard';
 import { CUFF_OPTIONS } from './data';
-import { BellowsPart } from './types';
+import { BellowsPart, QuoteSubmission } from './types';
 import { db } from './api/database';
 
 declare global {
@@ -184,6 +184,12 @@ function App() {
       setBaseAngularMove(String(selectedPart.angular_movement_deg));
       setBaseAngularSpring(String(selectedPart.angular_spring_rate_ft_lbs_deg));
 
+      setAxialDistUnit('in');
+      setAxialSpringUnit('LBF/IN');
+      setLateralDistUnit('in');
+      setLateralSpringUnit('LBF/IN');
+      setAngularSpringUnit('FT. LBS/DEG');
+
       if (tempUnit === '°F') {
         setTemperature(selectedPart.temperature_f);
       } else {
@@ -192,29 +198,40 @@ function App() {
     }
   }, [selectedPart, tempUnit]);
 
-  const getDisplayAxialMove = () => (parseValue(baseAxialMove) * (axialDistUnit === 'mm' ? IN_TO_MM : 1)).toFixed(3);
-  const getDisplayAxialSpring = () => {
-    const val = parseValue(baseAxialSpring);
-    if (axialSpringUnit === 'N/mm') return (val * LBF_IN_TO_NMM).toFixed(3);
-    if (axialSpringUnit === 'kg/mm') return (val * LBF_IN_TO_KGMM).toFixed(3);
-    if (axialSpringUnit === 'kg/cm') return (val * LBF_IN_TO_KGCM).toFixed(3);
-    return val.toString();
+  // Movement conversion helper
+  const convertMovementValue = (val: string, fromUnit: string, toUnit: string, type: 'dist' | 'spring' | 'angular') => {
+    const num = parseValue(val);
+    if (num === 0) return val;
+    
+    if (type === 'dist') {
+      if (fromUnit === 'in' && toUnit === 'mm') return (num * IN_TO_MM).toFixed(3);
+      if (fromUnit === 'mm' && toUnit === 'in') return (num / IN_TO_MM).toFixed(3);
+    }
+    
+    if (type === 'spring') {
+      const factors: Record<string, number> = {
+        'LBF/IN': 1,
+        'N/mm': LBF_IN_TO_NMM,
+        'kg/mm': LBF_IN_TO_KGMM,
+        'kg/cm': LBF_IN_TO_KGCM
+      };
+      const result = num * (factors[toUnit] / factors[fromUnit]);
+      return result.toFixed(3);
+    }
+    
+    if (type === 'angular') {
+      if (fromUnit === 'FT. LBS/DEG' && toUnit === 'n-m/deg') return (num * FTLBS_TO_NM).toFixed(3);
+      if (fromUnit === 'n-m/deg' && toUnit === 'FT. LBS/DEG') return (num / FTLBS_TO_NM).toFixed(3);
+    }
+    
+    return val;
   };
 
-  const getDisplayLateralMove = () => (parseValue(baseLateralMove) * (lateralDistUnit === 'mm' ? IN_TO_MM : 1)).toFixed(3);
-  const getDisplayLateralSpring = () => {
-    const val = parseValue(baseLateralSpring);
-    if (lateralSpringUnit === 'N/mm') return (val * LBF_IN_TO_NMM).toFixed(3);
-    if (lateralSpringUnit === 'kg/mm') return (val * LBF_IN_TO_KGMM).toFixed(3);
-    if (lateralSpringUnit === 'kg/cm') return (val * LBF_IN_TO_KGCM).toFixed(3);
-    return val.toString();
-  };
-
-  const getDisplayAngularSpring = () => {
-    const val = parseValue(baseAngularSpring);
-    if (angularSpringUnit === 'n-m/deg') return (val * FTLBS_TO_NM).toFixed(3);
-    return val.toString();
-  };
+  const getDisplayAxialMove = () => baseAxialMove;
+  const getDisplayAxialSpring = () => baseAxialSpring;
+  const getDisplayLateralMove = () => baseLateralMove;
+  const getDisplayLateralSpring = () => baseLateralSpring;
+  const getDisplayAngularSpring = () => baseAngularSpring;
 
   const resetConfigurator = () => {
     setPressure('');
@@ -258,6 +275,26 @@ function App() {
       setDiameterInput(getDisplayLength(part.pipe_size, diameterUnit));
       setOalInput(getDisplayLength(part.overall_length_oal_in, oalUnit));
     }
+  };
+
+  const handleDiameterUnitChange = (newUnit: string) => {
+    if (diameterInput) {
+      const originalSize = catalogDiameters.find(s => getDisplayLength(s, diameterUnit) === diameterInput);
+      if (originalSize !== undefined) {
+        setDiameterInput(getDisplayLength(originalSize, newUnit));
+      }
+    }
+    setDiameterUnit(newUnit);
+  };
+
+  const handleOalUnitChange = (newUnit: string) => {
+    if (oalInput) {
+      const originalLen = availableOALs.find(l => getDisplayLength(l, oalUnit) === oalInput);
+      if (originalLen !== undefined) {
+        setOalInput(getDisplayLength(originalLen, newUnit));
+      }
+    }
+    setOalUnit(newUnit);
   };
 
   const handlePressureUnitChange = (newUnit: string) => {
@@ -603,9 +640,15 @@ function App() {
                   <div>
                     <label className={labelStyle}>Nominal Diameter</label>
                     <div className="flex relative">
-                      <input type="text" list="diameters" value={diameterInput} onChange={(e) => handleDiameterChange(e.target.value)} placeholder="Type size..." className={`${inputStyle} rounded-r-none border-r-0`} />
-                      <datalist id="diameters">{catalogDiameters.map((size) => (<option key={size} value={getDisplayLength(size, diameterUnit)} />))}</datalist>
-                      <select value={diameterUnit} onChange={(e) => setDiameterUnit(e.target.value)} className={selectAddonStyle}>
+                      <select value={diameterInput} onChange={(e) => handleDiameterChange(e.target.value)} className={`${inputStyle} rounded-r-none border-r-0`}>
+                        <option value="">-- Select Size --</option>
+                        {catalogDiameters.map((size) => (
+                          <option key={size} value={getDisplayLength(size, diameterUnit)}>
+                            {getDisplayLength(size, diameterUnit)}
+                          </option>
+                        ))}
+                      </select>
+                      <select value={diameterUnit} onChange={(e) => handleDiameterUnitChange(e.target.value)} className={selectAddonStyle}>
                         <option value="DM">DM</option><option value="NB">NB</option><option value="IN">IN</option><option value="MM">MM</option>
                       </select>
                     </div>
@@ -613,9 +656,15 @@ function App() {
                   <div>
                     <label className={labelStyle}>Overall Length</label>
                     <div className="flex relative">
-                      <input type="text" list="lengths" value={oalInput} onChange={(e) => handleOALChange(e.target.value)} placeholder="Type length..." className={`${inputStyle} rounded-r-none border-r-0`} />
-                      <datalist id="lengths">{availableOALs.map((len) => (<option key={len} value={getDisplayLength(len, oalUnit)} />))}</datalist>
-                      <select value={oalUnit} onChange={(e) => setOalUnit(e.target.value)} className={selectAddonStyle}>
+                      <select value={oalInput} onChange={(e) => handleOALChange(e.target.value)} className={`${inputStyle} rounded-r-none border-r-0`}>
+                        <option value="">-- Select Length --</option>
+                        {availableOALs.map((len) => (
+                          <option key={len} value={getDisplayLength(len, oalUnit)}>
+                            {getDisplayLength(len, oalUnit)}
+                          </option>
+                        ))}
+                      </select>
+                      <select value={oalUnit} onChange={(e) => handleOalUnitChange(e.target.value)} className={selectAddonStyle}>
                         <option value="IN">IN</option><option value="MM">MM</option><option value="FT">FT</option>
                       </select>
                     </div>
@@ -697,14 +746,38 @@ function App() {
                           <label className={subLabelStyle}>Axial Value</label>
                           <div className="flex">
                             <input type="text" value={baseAxialMove} onChange={(e) => setBaseAxialMove(e.target.value)} className={`${editableInputStyle} rounded-r-none border-r-0`} />
-                            <select value={axialDistUnit} onChange={(e) => setAxialDistUnit(e.target.value as any)} className={selectAddonStyle}><option value="in">in</option><option value="mm">mm</option></select>
+                            <select 
+                              value={axialDistUnit} 
+                              onChange={(e) => {
+                                const nextUnit = e.target.value as 'in' | 'mm';
+                                setBaseAxialMove(convertMovementValue(baseAxialMove, axialDistUnit, nextUnit, 'dist'));
+                                setAxialDistUnit(nextUnit);
+                              }} 
+                              className={selectAddonStyle}
+                            >
+                              <option value="in">in</option>
+                              <option value="mm">mm</option>
+                            </select>
                           </div>
                         </div>
                         <div>
                           <label className={subLabelStyle}>Spring Rate</label>
                           <div className="flex">
                             <input type="text" value={baseAxialSpring} onChange={(e) => setBaseAxialSpring(e.target.value)} className={`${editableInputStyle} rounded-r-none border-r-0`} />
-                            <select value={axialSpringUnit} onChange={(e) => setAxialSpringUnit(e.target.value as any)} className={selectAddonStyle}><option value="LBF/IN">LBF/IN</option><option value="N/mm">N/mm</option><option value="kg/mm">kg/mm</option><option value="kg/cm">kg/cm</option></select>
+                            <select 
+                              value={axialSpringUnit} 
+                              onChange={(e) => {
+                                const nextUnit = e.target.value as any;
+                                setBaseAxialSpring(convertMovementValue(baseAxialSpring, axialSpringUnit, nextUnit, 'spring'));
+                                setAxialSpringUnit(nextUnit);
+                              }} 
+                              className={selectAddonStyle}
+                            >
+                              <option value="LBF/IN">LBF/IN</option>
+                              <option value="N/mm">N/mm</option>
+                              <option value="kg/mm">kg/mm</option>
+                              <option value="kg/cm">kg/cm</option>
+                            </select>
                           </div>
                         </div>
                       </div>
@@ -721,14 +794,38 @@ function App() {
                           <label className={subLabelStyle}>Lateral Value</label>
                           <div className="flex">
                             <input type="text" value={baseLateralMove} onChange={(e) => setBaseLateralMove(e.target.value)} className={`${editableInputStyle} rounded-r-none border-r-0`} />
-                            <select value={lateralDistUnit} onChange={(e) => setLateralDistUnit(e.target.value as any)} className={selectAddonStyle}><option value="in">in</option><option value="mm">mm</option></select>
+                            <select 
+                              value={lateralDistUnit} 
+                              onChange={(e) => {
+                                const nextUnit = e.target.value as 'in' | 'mm';
+                                setBaseLateralMove(convertMovementValue(baseLateralMove, lateralDistUnit, nextUnit, 'dist'));
+                                setLateralDistUnit(nextUnit);
+                              }} 
+                              className={selectAddonStyle}
+                            >
+                              <option value="in">in</option>
+                              <option value="mm">mm</option>
+                            </select>
                           </div>
                         </div>
                         <div>
                           <label className={subLabelStyle}>Spring Rate</label>
                           <div className="flex">
                             <input type="text" value={baseLateralSpring} onChange={(e) => setBaseLateralSpring(e.target.value)} className={`${editableInputStyle} rounded-r-none border-r-0`} />
-                            <select value={lateralSpringUnit} onChange={(e) => setLateralSpringUnit(e.target.value as any)} className={selectAddonStyle}><option value="LBF/IN">LBF/IN</option><option value="N/mm">N/mm</option><option value="kg/mm">kg/mm</option><option value="kg/cm">kg/cm</option></select>
+                            <select 
+                              value={lateralSpringUnit} 
+                              onChange={(e) => {
+                                const nextUnit = e.target.value as any;
+                                setBaseLateralSpring(convertMovementValue(baseLateralSpring, lateralSpringUnit, nextUnit, 'spring'));
+                                setLateralSpringUnit(nextUnit);
+                              }} 
+                              className={selectAddonStyle}
+                            >
+                              <option value="LBF/IN">LBF/IN</option>
+                              <option value="N/mm">N/mm</option>
+                              <option value="kg/mm">kg/mm</option>
+                              <option value="kg/cm">kg/cm</option>
+                            </select>
                           </div>
                         </div>
                       </div>
@@ -749,7 +846,18 @@ function App() {
                           <label className={subLabelStyle}>Spring Rate</label>
                           <div className="flex">
                             <input type="text" value={baseAngularSpring} onChange={(e) => setBaseAngularSpring(e.target.value)} className={`${editableInputStyle} rounded-r-none border-r-0`} />
-                            <select value={angularSpringUnit} onChange={(e) => setAngularSpringUnit(e.target.value as any)} className={selectAddonStyle}><option value="FT. LBS/DEG">FT. LBS/DEG</option><option value="n-m/deg">n-m/deg</option></select>
+                            <select 
+                              value={angularSpringUnit} 
+                              onChange={(e) => {
+                                const nextUnit = e.target.value as any;
+                                setBaseAngularSpring(convertMovementValue(baseAngularSpring, angularSpringUnit, nextUnit, 'angular'));
+                                setAngularSpringUnit(nextUnit);
+                              }} 
+                              className={selectAddonStyle}
+                            >
+                              <option value="FT. LBS/DEG">FT. LBS/DEG</option>
+                              <option value="n-m/deg">n-m/deg</option>
+                            </select>
                           </div>
                         </div>
                       </div>

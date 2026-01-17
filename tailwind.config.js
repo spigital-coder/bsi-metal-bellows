@@ -2,8 +2,10 @@
 export default {
   content: [
     "./index.html",
-    "./*.{js,ts,jsx,tsx}",
+    "./index.tsx",
+    "./App.tsx",
     "./components/**/*.{js,ts,jsx,tsx}",
+    "./api/**/*.{js,ts}",
   ],
   theme: {
     extend: {
@@ -13,6 +15,20 @@ export default {
       colors: {
         bsRed: '#C80A37',
         bsDark: '#414042',
+      },
+      animation: {
+        'in': 'fade-in 0.3s ease-out',
+        'zoom-in': 'zoom-in 0.2s ease-out',
+      },
+      keyframes: {
+        'fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'zoom-in': {
+          '0%': { transform: 'scale(0.95)', opacity: '0' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        }
       }
     },
   },

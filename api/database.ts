@@ -1,4 +1,4 @@
-import { BellowsPart } from '../types';
+import { BellowsPart, QuoteSubmission } from '../types';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://ibasglziaqxtywitwqwf.supabase.co';
@@ -19,7 +19,7 @@ export const db = {
         if (error) return { success: false, error: error.message };
         return { success: true, error: null, user: data.user };
       } catch (e: any) {
-        return { success: false, error: e.message || "Network error. Please check your connection or project status." };
+        return { success: false, error: e.message || "Network error." };
       }
     },
     signOut: async () => {
@@ -41,106 +41,90 @@ export const db = {
         const fileExt = file.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
         const filePath = `parts/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET_NAME)
-          .upload(filePath, file);
-
-        if (uploadError) {
-          console.error("Storage Upload Error:", uploadError);
-          return { url: null, error: uploadError.message };
-        }
-
-        const { data } = supabase.storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(filePath);
-
+        const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
+        if (uploadError) return { url: null, error: uploadError.message };
+        const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
         return { url: data.publicUrl, error: null };
       } catch (e: any) {
-        return { url: null, error: e.message || "Failed to upload image. Check network connection." };
+        return { url: null, error: e.message };
       }
     }
   },
 
   getAll: async (): Promise<BellowsPart[]> => {
     try {
-      const { data, error } = await supabase
-        .from('bellows_parts')
-        .select('*')
-        .order('part_number', { ascending: true });
-
-      if (error) {
-        console.error("Cloud Database Fetch Error:", error.message);
-        return [];
-      }
+      const { data, error } = await supabase.from('bellows_parts').select('*').order('part_number', { ascending: true });
       return data || [];
-    } catch (e) {
-      console.error("Connectivity issue:", e);
+    } catch {
       return [];
     }
   },
 
   create: async (newPart: BellowsPart): Promise<{success: boolean, error?: string}> => {
     try {
-      const { error } = await supabase
-        .from('bellows_parts')
-        .insert([newPart]);
-      
-      if (error) {
-        console.error("Insert Error:", error);
-        const msg = error.code === '42501' ? "RLS Policy Violation: Check your Supabase Table RLS Policies." : error.message;
-        return { success: false, error: msg };
-      }
+      const { error } = await supabase.from('bellows_parts').insert([newPart]);
+      if (error) return { success: false, error: error.message };
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || "Failed to connect to database." };
+      return { success: false, error: e.message };
     }
   },
 
   update: async (partNumber: string, data: Partial<BellowsPart>): Promise<{success: boolean, error?: string}> => {
     try {
-      const { error } = await supabase
-        .from('bellows_parts')
-        .update(data)
-        .eq('part_number', partNumber);
-
-      if (error) {
-        const msg = error.code === '42501' ? "RLS Policy Violation: Check your Supabase Table RLS Policies." : error.message;
-        return { success: false, error: msg };
-      }
+      const { error } = await supabase.from('bellows_parts').update(data).eq('part_number', partNumber);
+      if (error) return { success: false, error: error.message };
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || "Failed to connect to database." };
+      return { success: false, error: e.message };
     }
   },
 
   delete: async (partNumber: string): Promise<{success: boolean, error?: string}> => {
     try {
-      console.log("Database: Attempting to delete part:", partNumber);
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.warn("Delete aborted: No active session found.");
-        return { success: false, error: "Session Expired. Please sign in again." };
-      }
-
-      // Execute delete
-      const { error } = await supabase
-        .from('bellows_parts')
-        .delete()
-        .eq('part_number', partNumber);
-
-      if (error) {
-        console.error("Database Delete Error:", error);
-        const msg = error.code === '42501' ? "RLS Permission Denied: Explicit DELETE policy missing in Supabase." : error.message;
-        return { success: false, error: msg };
-      }
-
-      console.log("Database: Delete request completed successfully.");
+      const { error } = await supabase.from('bellows_parts').delete().eq('part_number', partNumber);
+      if (error) return { success: false, error: error.message };
       return { success: true };
     } catch (e: any) {
-      console.error("CRITICAL error in delete service:", e);
-      return { success: false, error: e.message || "Internal network error during deletion." };
+      return { success: false, error: e.message };
+    }
+  },
+
+  submissions: {
+    getAll: async (): Promise<{data: QuoteSubmission[], error: any}> => {
+      try {
+        const { data, error } = await supabase.from('quote_submissions').select('*').order('created_at', { ascending: false });
+        return { data: data || [], error };
+      } catch (e) {
+        return { data: [], error: e };
+      }
+    },
+    create: async (submission: QuoteSubmission): Promise<{success: boolean, error?: string}> => {
+      try {
+        const { error } = await supabase.from('quote_submissions').insert([submission]);
+        if (error) return { success: false, error: error.message };
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
+    },
+    update: async (id: string, data: Partial<QuoteSubmission>): Promise<{success: boolean, error?: string}> => {
+      try {
+        const { error } = await supabase.from('quote_submissions').update(data).eq('id', id);
+        if (error) return { success: false, error: error.message };
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
+    },
+    delete: async (id: string): Promise<{success: boolean, error?: string}> => {
+      try {
+        const { error } = await supabase.from('quote_submissions').delete().eq('id', id);
+        if (error) return { success: false, error: error.message };
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
     }
   }
 };

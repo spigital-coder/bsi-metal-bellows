@@ -24,6 +24,22 @@ export interface BellowsPart {
   image_url?: string;
 }
 
+export interface QuoteSubmission {
+  id?: string;
+  created_at?: string;
+  contact_name: string;
+  company_name: string;
+  email: string;
+  phone: string;
+  street_address: string;
+  city: string;
+  postal_code: string;
+  country: string;
+  part_number: string;
+  image_url?: string;
+  configuration_data: any; 
+}
+
 export enum CuffEndType {
   STANDARD_I = "STANDARD I CUFF ENDS",
   S_CUFF = "S CUFF ENDS",
